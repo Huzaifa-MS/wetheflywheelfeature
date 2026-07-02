@@ -190,9 +190,31 @@ function buildDashboard() {
         '</section>',
     ].join('\n');
 }
+function buildGoalNotifications(review) {
+    // Check which exercises hit or are close to their projected goal.
+    // 90% of goal = "almost", >= goal = "met".
+    const met = review
+        .filter(c => c.goal > 0 && c.current >= c.goal)
+        .map(c => c.exercise);
+    const close = review
+        .filter(c => c.goal > 0 && c.current >= c.goal * 0.9 && c.current < c.goal)
+        .map(c => c.exercise);
+    if (met.length === 0 && close.length === 0)
+        return '';
+    const metLine = met.length > 0
+        ? `<p>Goal met for: <strong>${met.join(', ')}</strong></p>`
+        : '';
+    const closeLine = close.length > 0
+        ? `<p>Almost at your goal for: <strong>${close.join(', ')}</strong></p>`
+        : '';
+    // Use "met" style if any goals met, otherwise "close"
+    const cls = met.length > 0 ? 'goal-met' : 'goal-close';
+    return `<div class="goal-notification goal-notification--${cls}">${metLine}${closeLine}</div>`;
+}
 function buildReview() {
     if (!review)
         return '';
+    const notification = buildGoalNotifications(review);
     const rows = review.map(c => {
         const direction = c.change > 0 ? 'up' : c.change < 0 ? 'down' : 'even';
         const symbol = c.change > 0 ? '+' : '';
@@ -214,6 +236,7 @@ function buildReview() {
         '<h1 class="title">Session Complete</h1>',
         '<p class="subtitle">Here is how you did against your past self.</p>',
         '</header>',
+        notification,
         '<section class="card-panel">',
         '<table class="data-table">',
         '<thead><tr><th>Exercise</th><th>Unit</th><th>Past Self</th><th>You Now</th><th>Change</th><th>Next Goal</th></tr></thead>',
