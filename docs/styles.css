@@ -274,6 +274,14 @@ select.input {
   border: 1px solid #bbf7d0;
 }
 
+.goal-notification--all-met {
+  background: #166534;
+  color: #fff;
+  border: 1px solid #15803d;
+  text-align: center;
+  font-size: 1.05rem;
+}
+
 .goal-notification--goal-close {
   background: #fef3c7;
   color: #92400e;

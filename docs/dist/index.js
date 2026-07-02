@@ -191,25 +191,37 @@ function buildDashboard() {
     ].join('\n');
 }
 function buildGoalNotifications(review) {
-    // Check which exercises hit or are close to their projected goal.
-    // 90% of goal = "almost", >= goal = "met".
-    const met = review
-        .filter(c => c.goal > 0 && c.current >= c.goal)
-        .map(c => c.exercise);
-    const close = review
-        .filter(c => c.goal > 0 && c.current >= c.goal * 0.9 && c.current < c.goal)
-        .map(c => c.exercise);
-    if (met.length === 0 && close.length === 0)
+    // Combine all entries to assess the session as a whole.
+    // Each entry with a goal > 0 is checked: met if current >= goal,
+    // close if current >= 90% of goal, missed otherwise.
+    const total = review.filter(c => c.goal > 0).length;
+    if (total === 0)
         return '';
-    const metLine = met.length > 0
-        ? `<p>Goal met for: <strong>${met.join(', ')}</strong></p>`
-        : '';
-    const closeLine = close.length > 0
-        ? `<p>Almost at your goal for: <strong>${close.join(', ')}</strong></p>`
-        : '';
-    // Use "met" style if any goals met, otherwise "close"
-    const cls = met.length > 0 ? 'goal-met' : 'goal-close';
-    return `<div class="goal-notification goal-notification--${cls}">${metLine}${closeLine}</div>`;
+    const met = review.filter(c => c.goal > 0 && c.current >= c.goal);
+    const close = review.filter(c => c.goal > 0 && c.current >= c.goal * 0.9 && c.current < c.goal);
+    const missed = review.filter(c => c.goal > 0 && c.current < c.goal * 0.9);
+    // All entries met their goal
+    if (met.length === total) {
+        return `<div class="goal-notification goal-notification--all-met">
+      <p><strong>All goals met!</strong> Great session — you beat your past self across the board. :)</p>
+    </div>`;
+    }
+    // Mixed results — show breakdown
+    const lines = [];
+    if (met.length > 0) {
+        lines.push(`Goal met: <strong>${met.map(c => c.exercise).join(', ')}</strong>`);
+    }
+    if (close.length > 0) {
+        lines.push(`Close: <strong>${close.map(c => c.exercise).join(', ')}</strong>`);
+    }
+    if (missed.length > 0) {
+        lines.push(`Keep pushing: <strong>${missed.map(c => c.exercise).join(', ')}</strong>`);
+    }
+    // Pick style: green if majority met, amber otherwise
+    const cls = met.length >= total / 2 ? 'goal-met' : 'goal-close';
+    return `<div class="goal-notification goal-notification--${cls}">
+    ${lines.map(l => `<p>${l}</p>`).join('')}
+  </div>`;
 }
 function buildReview() {
     if (!review)
