@@ -85,6 +85,18 @@ function projectGoal(sessions, exercise, rate) {
     const best = bestFor(sessions, exercise);
     return best ? Math.round(best.value * (1 + rate)) : 0;
 }
+// mergeEntries — combine entries for the same exercise. Takes the max value.
+// Uses reduce to group, then map to produce merged array.
+function mergeEntries(entries) {
+    const grouped = entries.reduce((acc, e) => {
+        const existing = acc[e.exercise];
+        if (!existing || e.value > existing.value) {
+            acc[e.exercise] = e;
+        }
+        return acc;
+    }, {});
+    return Object.values(grouped);
+}
 // compare — compare current entries against past self.
 // Uses map to build comparison objects.
 function compare(current, sessions, rate) {
@@ -292,8 +304,9 @@ document.addEventListener('click', (e) => {
     if (action === 'complete-session') {
         if (pendingEntries.length === 0)
             return;
-        sessions = addSession(sessions, pendingEntries);
-        review = compare(pendingEntries, sessions.slice(0, -1), rate);
+        const merged = mergeEntries(pendingEntries);
+        sessions = addSession(sessions, merged);
+        review = compare(merged, sessions.slice(0, -1), rate);
         pendingEntries = [];
         save();
         render();
