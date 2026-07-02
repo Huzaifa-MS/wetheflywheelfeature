@@ -1,228 +1,373 @@
 // ================================================================
-// Task Pipeline Demo
+// Self Competitive Coach
+//
+// Mental model (FSM in mind, procedural in code):
+//   empty → (first session) → has_baseline → (each session) → has_data
+//   After each session: compare current vs past self → project next goal
 //
 // Procedural flow with functional data operations.
-//
-// Mental model — tasks flow through statuses via actions:
-//   pending → start → processing → complete → completed
-//   pending → cancel → cancelled
-//   processing → fail → failed → retry → pending
-//
-// Functional style: map, filter, reduce on immutable data
-// Procedural style: clear top-to-bottom flow
-// Event delegation: single listener for all UI interactions
+// map, filter, reduce on immutable data.
 // ================================================================
 
 // --- Types ---
 
-type Status = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-
-interface Item {
-  id: string;
-  label: string;
-  status: Status;
-  createdAt: number;
+interface Entry {
+  exercise: string;
+  value: number;
+  unit: string;
 }
 
-// --- Status transitions (procedural, no abstraction) ---
+interface Session {
+  id: string;
+  date: string;
+  entries: Entry[];
+}
 
-const STATUS_ORDER: Status[] = [
-  'pending', 'processing', 'completed', 'failed', 'cancelled',
+interface Comparison {
+  exercise: string;
+  unit: string;
+  current: number;
+  previous: number;
+  change: number;
+  goal: number;
+}
+
+// --- Constants ---
+
+const EXERCISE_OPTIONS: { name: string; unit: string }[] = [
+  { name: 'Push-ups',     unit: 'reps' },
+  { name: 'Squats',       unit: 'reps' },
+  { name: 'Plank',        unit: 'sec' },
+  { name: 'Running',      unit: 'min' },
+  { name: 'Bench Press',  unit: 'kg' },
+  { name: 'Deadlift',     unit: 'kg' },
 ];
 
-const STATUS_LABEL: Record<Status, string> = {
-  pending:    'Pending',
-  processing: 'Processing',
-  completed:  'Completed',
-  failed:     'Failed',
-  cancelled:  'Cancelled',
-};
+// --- State ---
 
-function nextStatus(current: Status, action: string): Status {
-  if (current === 'pending') {
-    if (action === 'start')  return 'processing';
-    if (action === 'cancel') return 'cancelled';
-  }
-  if (current === 'processing') {
-    if (action === 'complete') return 'completed';
-    if (action === 'fail')     return 'failed';
-    if (action === 'cancel')   return 'cancelled';
-  }
-  if (current === 'failed') {
-    if (action === 'retry')  return 'pending';
-    if (action === 'cancel') return 'cancelled';
-  }
-  return current;
+let sessions: Session[] = [];
+let rate: number = 0.01;
+let pendingEntries: Entry[] = [];
+let review: Comparison[] | null = null;
+
+// --- Persistence (localStorage) ---
+
+function load(): void {
+  try {
+    const raw = localStorage.getItem('self-coach-sessions');
+    if (raw) sessions = JSON.parse(raw);
+    const r = localStorage.getItem('self-coach-rate');
+    if (r) rate = parseFloat(r);
+  } catch { /* ignore corrupt data */ }
 }
 
-function actionsFor(status: Status): string[] {
-  if (status === 'pending')    return ['start', 'cancel'];
-  if (status === 'processing') return ['complete', 'fail', 'cancel'];
-  if (status === 'failed')     return ['retry', 'cancel'];
-  return [];
+function save(): void {
+  localStorage.setItem('self-coach-sessions', JSON.stringify(sessions));
+  localStorage.setItem('self-coach-rate', String(rate));
+}
+
+// --- Status labels (procedural, no abstraction) ---
+
+function statusLabel(): string {
+  if (sessions.length === 0) return 'No sessions yet';
+  if (sessions.length === 1) return 'Baseline set';
+  return `${sessions.length} sessions logged`;
 }
 
 // --- Data operations (functional: map, filter, reduce, immutability) ---
 
-function addItem(items: Item[], label: string): Item[] {
-  const item: Item = {
+function addSession(sessions: Session[], entries: Entry[]): Session[] {
+  const session: Session = {
     id: crypto.randomUUID(),
-    label,
-    status: 'pending',
-    createdAt: Date.now(),
+    date: new Date().toISOString().split('T')[0],
+    entries,
   };
-  return [...items, item];
+  return [...sessions, session];
 }
 
-function applyAction(items: Item[], id: string, action: string): Item[] {
-  return items.map(item =>
-    item.id === id
-      ? { ...item, status: nextStatus(item.status, action) }
-      : item
-  );
+// latestFor — find the most recent entry for an exercise. Uses filter + reduce.
+function latestFor(sessions: Session[], exercise: string): Entry | null {
+  return sessions
+    .flatMap(s => s.entries)
+    .filter(e => e.exercise === exercise)
+    .reduce<Entry | null>((latest, e) => {
+      if (!latest) return e;
+      // Items are in chronological order, last one wins
+      return e;
+    }, null);
 }
 
-function removeItem(items: Item[], id: string): Item[] {
-  return items.filter(item => item.id !== id);
+// bestFor — find the best (highest value) entry for an exercise. Uses filter + reduce.
+function bestFor(sessions: Session[], exercise: string): Entry | null {
+  return sessions
+    .flatMap(s => s.entries)
+    .filter(e => e.exercise === exercise)
+    .reduce<Entry | null>((best, e) =>
+      !best || e.value > best.value ? e : best,
+      null);
 }
 
-function countByStatus(items: Item[]): Record<Status, number> {
-  return items.reduce<Record<Status, number>>((acc, item) => {
-    acc[item.status] = (acc[item.status] ?? 0) + 1;
-    return acc;
-  }, {} as Record<Status, number>);
+// exercises — collect all unique exercises. Uses flatMap + Set.
+function exercises(sessions: Session[]): string[] {
+  return [...new Set(sessions.flatMap(s => s.entries.map(e => e.exercise)))];
 }
 
-function groupByStatus(items: Item[]): Record<Status, Item[]> {
-  return items.reduce<Record<Status, Item[]>>((acc, item) => {
-    const group = acc[item.status] ?? [];
-    acc[item.status] = [...group, item];
-    return acc;
-  }, {} as Record<Status, Item[]>);
+// projectGoal — compute the next target for an exercise.
+// Uses the best past value multiplied by the improvement rate.
+function projectGoal(sessions: Session[], exercise: string, rate: number): number {
+  const best = bestFor(sessions, exercise);
+  return best ? Math.round(best.value * (1 + rate)) : 0;
+}
+
+// compare — compare current entries against past self.
+// Uses map to build comparison objects.
+function compare(
+  current: Entry[],
+  sessions: Session[],
+  rate: number,
+): Comparison[] {
+  return current.map(entry => {
+    const prev = latestFor(sessions, entry.exercise);
+    const previous = prev ? prev.value : 0;
+    const goal = projectGoal(sessions, entry.exercise, rate);
+    const change = previous !== 0
+      ? Math.round(((entry.value - previous) / previous) * 10000) / 100
+      : 0;
+    return {
+      exercise: entry.exercise,
+      unit: entry.unit,
+      current: entry.value,
+      previous,
+      change,
+      goal,
+    };
+  });
+}
+
+// recentSessions — return the last N sessions. Uses slice (immutable).
+function recentSessions(sessions: Session[], count: number): Session[] {
+  return sessions.slice(-count).reverse();
 }
 
 // --- Rendering ---
 
-function render(items: Item[]): void {
+function render(): void {
   const app = document.getElementById('app');
   if (!app) return;
-  app.innerHTML = buildPage(items);
+  app.innerHTML = review ? buildReview() : buildDashboard();
 }
 
-function buildPage(items: Item[]): string {
-  const grouped = groupByStatus(items);
-  const counts  = countByStatus(items);
+function buildDashboard(): string {
+  const allExercises = exercises(sessions);
+  const goals = allExercises.map(ex => ({
+    exercise: ex,
+    goal: projectGoal(sessions, ex, rate),
+    unit: bestFor(sessions, ex)?.unit ?? '',
+  }));
+
+  // Helper: build the pending-entries table rows if any
+  const pendingRows = pendingEntries.length === 0 ? ''
+    : pendingEntries.map(e =>
+      `<tr>
+        <td>${e.exercise}</td>
+        <td>${e.value}</td>
+        <td>${e.unit}</td>
+        <td><button class="btn btn--small btn--remove" data-action="remove-entry" data-exercise="${e.exercise}">x</button></td>
+      </tr>`
+    ).join('');
+
+  // Helper: build a "no entries" or pending table
+  const pendingBlock = pendingEntries.length === 0
+    ? '<p class="muted">No entries yet. Add one below.</p>'
+    : `<table class="data-table"><thead><tr><th>Exercise</th><th>Value</th><th>Unit</th><th></th></tr></thead><tbody>${pendingRows}</tbody></table>`;
+
+  // Helper: history rows
+  const historyRows = recentSessions(sessions, 5).map(s => {
+    const entryCells = s.entries.map(e => `${e.exercise}: ${e.value} ${e.unit}`).join(', ');
+    return `<tr><td>${s.date}</td><td>${entryCells}</td></tr>`;
+  }).join('') || '<tr><td colspan="2" class="muted">No sessions</td></tr>';
+
+  // Helper: goals list
+  const goalItems = goals.length === 0
+    ? '<p class="muted">Complete a baseline session first</p>'
+    : goals.map(g => `<div class="goal-chip">${g.exercise}: <strong>${g.goal} ${g.unit}</strong></div>`).join('');
 
   return [
     '<header class="header">',
-    '<h1 class="title">Task Pipeline Demo</h1>',
-    '<p class="subtitle">Procedural + Functional Programming (map / filter / reduce / immutability)</p>',
+    '<h1 class="title">Self Competitive Coach</h1>',
+    '<p class="subtitle">Beat your past self. 1% better every session.</p>',
     '</header>',
-    '<section class="controls">',
-    '<form id="form-add">',
-    '<input id="input-task" class="input" type="text" placeholder="Enter task name..." required autofocus />',
-    '<button class="btn btn--primary" type="submit">Add Task</button>',
-    '</form>',
+
+    '<section class="status-bar">',
+    `<span class="status-label">${statusLabel()}</span>`,
+    '<span class="rate-display">',
+    `Rate: ${(rate * 100).toFixed(0)}% per session`,
+    '<button class="btn btn--small btn--action" data-action="change-rate">Change</button>',
+    '</span>',
     '</section>',
-    '<section class="stats-bar">',
-    buildStats(counts, items.length),
+
+    '<section class="card-panel">',
+    '<h2>Log a New Session</h2>',
+    '<div class="session-form">',
+    '<select id="exercise-select" class="input">',
+    EXERCISE_OPTIONS.map(o => `<option value="${o.name}" data-unit="${o.unit}">${o.name} (${o.unit})</option>`).join(''),
+    '</select>',
+    '<input id="value-input" class="input input--short" type="number" min="1" placeholder="Value" />',
+    '<button class="btn btn--primary" data-action="add-entry">Add to Session</button>',
+    '</div>',
+    pendingBlock,
+    pendingEntries.length > 0
+      ? '<button class="btn btn--complete" data-action="complete-session" style="margin-top:0.75rem">Complete Session</button>'
+      : '',
     '</section>',
-    '<section class="pipeline">',
-    STATUS_ORDER.map(s => buildColumn(s, grouped[s] ?? [])).join(''),
+
+    '<section class="card-panel">',
+    '<h2>Next Goals</h2>',
+    '<div class="goal-list">',
+    goalItems,
+    '</div>',
+    '</section>',
+
+    '<section class="card-panel">',
+    '<h2>Session History</h2>',
+    '<table class="data-table">',
+    '<thead><tr><th>Date</th><th>Exercises</th></tr></thead>',
+    '<tbody>',
+    historyRows,
+    '</tbody>',
+    '</table>',
+    sessions.length > 0
+      ? `<p style="margin-top:0.75rem"><button class="btn btn--danger" data-action="reset-all">Reset All Data</button></p>`
+      : '',
     '</section>',
   ].join('\n');
 }
 
-function buildStats(counts: Record<Status, number>, total: number): string {
-  const parts = STATUS_ORDER.map(s =>
-    `<span class="stat stat--${s}">${STATUS_LABEL[s]}: ${counts[s] ?? 0}</span>`
-  );
-  parts.push(`<span class="stat stat--total">Total: ${total}</span>`);
-  return parts.join('');
-}
+function buildReview(): string {
+  if (!review) return '';
 
-function buildColumn(status: Status, items: Item[]): string {
-  const actions = actionsFor(status);
-  const cards = items.length === 0
-    ? '<p class="empty">No tasks</p>'
-    : items.map(i => buildCard(i, actions)).join('');
+  const rows = review.map(c => {
+    const direction = c.change > 0 ? 'up' : c.change < 0 ? 'down' : 'even';
+    const symbol = c.change > 0 ? '+' : '';
+    // Use toFixed for clean display
+    const changeDisplay = c.previous === 0
+      ? 'new'
+      : `${symbol}${c.change}%`;
 
-  return [
-    `<div class="column column--${status}">`,
-    `<h2 class="column-heading">${STATUS_LABEL[status]}</h2>`,
-    '<div class="card-list">',
-    cards,
-    '</div>',
-    '</div>',
-  ].join('');
-}
-
-function buildCard(item: Item, actions: string[]): string {
-  const buttons = actions.map(a =>
-    `<button class="btn btn--action btn--${a}" data-id="${item.id}" data-action="${a}">${a}</button>`
-  ).join('');
+    return `<tr class="row--${direction}">
+      <td><strong>${c.exercise}</strong></td>
+      <td>${c.unit}</td>
+      <td>${c.previous || '-'}</td>
+      <td><strong>${c.current}</strong></td>
+      <td class="cell--${direction}">${changeDisplay}</td>
+      <td>${c.goal} ${c.unit}</td>
+    </tr>`;
+  }).join('');
 
   return [
-    '<div class="card">',
-    `<span class="card-label">${escapeHTML(item.label)}</span>`,
-    '<div class="card-actions">',
-    buttons,
-    `<button class="btn btn--remove" data-id="${item.id}" data-action="remove">Remove</button>`,
-    '</div>',
-    '</div>',
-  ].join('');
-}
+    '<header class="header">',
+    '<h1 class="title">Session Complete</h1>',
+    '<p class="subtitle">Here is how you did against your past self.</p>',
+    '</header>',
 
-function escapeHTML(text: string): string {
-  const el = document.createElement('div');
-  el.textContent = text;
-  return el.innerHTML;
+    '<section class="card-panel">',
+    '<table class="data-table">',
+    '<thead><tr><th>Exercise</th><th>Unit</th><th>Past Self</th><th>You Now</th><th>Change</th><th>Next Goal</th></tr></thead>',
+    '<tbody>',
+    rows,
+    '</tbody>',
+    '</table>',
+    '</section>',
+
+    '<section style="text-align:center; margin-top:1.5rem">',
+    '<button class="btn btn--primary" data-action="back-to-dashboard">Back to Dashboard</button>',
+    '</section>',
+  ].join('\n');
 }
 
 // --- Event handling (event delegation) ---
 
-let items: Item[] = [];
-
 document.addEventListener('click', (e) => {
-  const target = (e.target as HTMLElement).closest('[data-id][data-action]') as HTMLElement | null;
+  const target = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
   if (!target) return;
 
-  const id     = target.dataset.id!;
   const action = target.dataset.action!;
 
-  if (action === 'remove') {
-    items = removeItem(items, id);
-  } else {
-    items = applyAction(items, id, action);
+  if (action === 'add-entry') {
+    const select = document.getElementById('exercise-select') as HTMLSelectElement;
+    const input = document.getElementById('value-input') as HTMLInputElement;
+    const name = select.value;
+    const unit = select.options[select.selectedIndex].dataset.unit!;
+    const value = parseInt(input.value, 10);
+    if (!name || isNaN(value) || value <= 0) return;
+
+    pendingEntries = [...pendingEntries, { exercise: name, value, unit }];
+    input.value = '';
+    render();
   }
 
-  render(items);
+  if (action === 'remove-entry') {
+    const exercise = target.dataset.exercise!;
+    // Remove the first matching entry from pendingEntries
+    const idx = pendingEntries.findIndex(e => e.exercise === exercise);
+    if (idx !== -1) {
+      pendingEntries = pendingEntries.filter((_, i) => i !== idx);
+    }
+    render();
+  }
+
+  if (action === 'complete-session') {
+    if (pendingEntries.length === 0) return;
+    sessions = addSession(sessions, pendingEntries);
+    review = compare(pendingEntries, sessions.slice(0, -1), rate);
+    pendingEntries = [];
+    save();
+    render();
+  }
+
+  if (action === 'back-to-dashboard') {
+    review = null;
+    render();
+  }
+
+  if (action === 'change-rate') {
+    const newRate = prompt('Enter new improvement rate (as percentage, e.g. 2 for 2%):', String(rate * 100));
+    if (newRate === null) return;
+    const parsed = parseFloat(newRate);
+    if (isNaN(parsed) || parsed <= 0) return;
+    rate = parsed / 100;
+    save();
+    render();
+  }
+
+  if (action === 'reset-all') {
+    if (!confirm('Delete all session data? This cannot be undone.')) return;
+    sessions = [];
+    pendingEntries = [];
+    review = null;
+    save();
+    render();
+  }
 });
 
-document.addEventListener('submit', (e) => {
-  const form = e.target as HTMLFormElement;
-  if (form.id !== 'form-add') return;
+// --- Initialization ---
 
-  e.preventDefault();
-  const input = document.getElementById('input-task') as HTMLInputElement;
-  const label = input.value.trim();
-  if (!label) return;
+load();
 
-  items = addItem(items, label);
-  input.value = '';
-  render(items);
-});
+// Seed one benchmark session if empty (so the demo isn't blank)
+if (sessions.length === 0) {
+  sessions = [
+    {
+      id: crypto.randomUUID(),
+      date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      entries: [
+        { exercise: 'Push-ups',  value: 40, unit: 'reps' },
+        { exercise: 'Squats',    value: 55, unit: 'reps' },
+        { exercise: 'Plank',     value: 60, unit: 'sec' },
+      ],
+    },
+  ];
+  save();
+}
 
-// --- Seed data ---
-
-const seedLabels = [
-  'Design the UI layout',
-  'Write data operations (map, filter, reduce)',
-  'Add event delegation',
-  'Style the pipeline columns',
-  'Deploy to Cloudflare Pages',
-];
-
-items = seedLabels.reduce(addItem, items);
-
-render(items);
+render();

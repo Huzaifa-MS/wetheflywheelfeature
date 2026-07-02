@@ -1,5 +1,5 @@
 /* ================================================================
-   styles.css — Task Pipeline Demo
+   styles.css — Self Competitive Coach
    ================================================================ */
 
 /* --- Reset & Base -------------------------------------------- */
@@ -22,7 +22,7 @@ body {
 /* --- App Layout ---------------------------------------------- */
 
 #app {
-  max-width: 1200px;
+  max-width: 700px;
   margin: 0 auto;
   padding: 1.5rem;
 }
@@ -31,7 +31,7 @@ body {
 
 .header {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .title {
@@ -46,32 +46,87 @@ body {
   margin-top: 0.25rem;
 }
 
-/* --- Controls ------------------------------------------------ */
+/* --- Status Bar ---------------------------------------------- */
 
-.controls {
-  margin-bottom: 1.5rem;
-}
-
-#form-add {
+.status-bar {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  max-width: 480px;
-  margin: 0 auto;
+  padding: 0.625rem 1rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-size: 0.85rem;
 }
+
+.status-label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.rate-display {
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* --- Card Panel ---------------------------------------------- */
+
+.card-panel {
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.card-panel h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+/* --- Inputs -------------------------------------------------- */
 
 .input {
-  flex: 1;
-  padding: 0.625rem 0.875rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s;
+  background: #fff;
 }
 
 .input:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.input--short {
+  width: 100px;
+}
+
+select.input {
+  min-width: 180px;
+  cursor: pointer;
+}
+
+/* --- Session Form -------------------------------------------- */
+
+.session-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
 /* --- Buttons ------------------------------------------------- */
@@ -83,7 +138,7 @@ body {
   padding: 0.5rem 0.875rem;
   border: none;
   border-radius: 0.375rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
@@ -98,130 +153,113 @@ body {
   opacity: 0.7;
 }
 
+.btn--small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
 .btn--primary {
   background: #3b82f6;
   color: #fff;
 }
 
-.btn--start    { background: #3b82f6; color: #fff; }
-.btn--complete { background: #22c55e; color: #fff; }
-.btn--fail     { background: #ef4444; color: #fff; }
-.btn--cancel   { background: #9ca3af; color: #fff; }
-.btn--retry    { background: #f59e0b; color: #fff; }
-.btn--remove   { background: transparent; color: #9ca3af; border: 1px solid #d1d5db; }
-.btn--remove:hover { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
-
-/* --- Stats Bar ----------------------------------------------- */
-
-.stats-bar {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  padding: 0.75rem 1rem;
-  background: #fff;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+.btn--complete {
+  background: #22c55e;
+  color: #fff;
 }
 
-.stat {
+.btn--danger {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn--action {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn--remove {
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #d1d5db;
+  padding: 0.125rem 0.375rem;
+  line-height: 1;
+}
+
+.btn--remove:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* --- Data Table ---------------------------------------------- */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 0.85rem;
-  font-weight: 500;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  background: #f3f4f6;
-  color: #374151;
 }
 
-.stat--pending    { background: #e5e7eb; color: #374151; }
-.stat--processing { background: #dbeafe; color: #1d4ed8; }
-.stat--completed  { background: #dcfce7; color: #15803d; }
-.stat--failed     { background: #fee2e2; color: #dc2626; }
-.stat--cancelled  { background: #f3e8ff; color: #9333ea; }
-.stat--total      { background: #fef3c7; color: #92400e; margin-left: auto; }
-
-/* --- Pipeline Columns ---------------------------------------- */
-
-.pipeline {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.75rem;
-}
-
-.column {
-  background: #fff;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  min-height: 200px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  border-top: 3px solid #d1d5db;
-}
-
-.column--pending    { border-top-color: #6b7280; }
-.column--processing { border-top-color: #3b82f6; }
-.column--completed  { border-top-color: #22c55e; }
-.column--failed     { border-top-color: #ef4444; }
-.column--cancelled  { border-top-color: #a855f7; }
-
-.column-heading {
-  font-size: 0.9rem;
+.data-table th {
+  text-align: left;
+  padding: 0.5rem 0.625rem;
   font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.data-table td {
+  padding: 0.5rem 0.625rem;
   border-bottom: 1px solid #f3f4f6;
 }
 
-/* --- Card List & Cards --------------------------------------- */
+.data-table tr:last-child td {
+  border-bottom: none;
+}
 
-.card-list {
+/* --- Review result rows -------------------------------------- */
+
+.row--up {
+  background: #f0fdf4;
+}
+
+.row--down {
+  background: #fef2f2;
+}
+
+.cell--up {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.cell--down {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.cell--even {
+  color: #6b7280;
+}
+
+/* --- Goal Chips ---------------------------------------------- */
+
+.goal-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
-  padding: 0.625rem 0.75rem;
-}
-
-.card-label {
-  display: block;
+.goal-chip {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
   font-size: 0.85rem;
-  font-weight: 500;
-  color: #1f2937;
-  margin-bottom: 0.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.card-actions {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-}
+/* --- Utility ------------------------------------------------- */
 
-.empty {
-  font-size: 0.8rem;
+.muted {
   color: #9ca3af;
-  text-align: center;
-  padding: 1rem 0;
-}
-
-/* --- Responsive ---------------------------------------------- */
-
-@media (max-width: 900px) {
-  .pipeline {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 600px) {
-  .pipeline {
-    grid-template-columns: 1fr 1fr;
-  }
+  font-size: 0.85rem;
 }
